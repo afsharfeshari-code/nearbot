@@ -1,10 +1,12 @@
 import requests
-from datetime import datetime, timedelta
+from datetime 
+import datetime
 import time
 
 # ---------- تنظیمات تلگرام ----------
 API_TELEGRAM = "8448021675:AAE0Z4jRdHZKLVXxIBEfpCb9lUbkkxmlW-k"
 CHAT_ID = "7107618784"
+
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{API_TELEGRAM}/sendMessage"
     try:
@@ -12,33 +14,39 @@ def send_telegram_message(message):
     except Exception as e:
         print("خطا در ارسال پیام تلگرام:", e)
 
-# ---------- پیام تست ----------
+# پیام وصل شدن ربات
 send_telegram_message("ربات وصل شد ✅")
 
 # ---------- تنظیمات استراتژی ----------
 DELTA = 0.001
-LEVERAGE = 20  # عدد صحیح
+LEVERAGE = 20         # عدد صحیح
 TARGET_MOVE = 0.10 / LEVERAGE
 STOP_MOVE   = 0.40 / LEVERAGE
-
 SYMBOL = "NEARUSDT"
 
-# ---------- توابع کمکی ----------
+# ---------- تابع کمکی تبدیل به float ----------
+def to_float(x):
+    try:
+        return float(x)
+    except:
+        return 0.0  # یا مقدار پیش‌فرض دیگر
+
+# ---------- گرفتن کندل از API ----------
 def get_klines(symbol, interval="5m", limit=20):
-    """ دریافت آخرین کندل‌ها از Binance API عمومی """
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
     data = requests.get(url).json()
     klines = []
     for d in data:
         klines.append({
             "time": datetime.fromtimestamp(d[0]/1000),
-            "open": float(d[1]),
-            "high": float(d[2]),
-            "low": float(d[3]),
-            "close": float(d[4])
+            "open": to_float(d[1]),
+            "high": to_float(d[2]),
+            "low": to_float(d[3]),
+            "close": to_float(d[4])
         })
     return klines
 
+# ---------- توابع هشدار و ورود ----------
 def check_alert(candle_close, high_4h, low_4h):
     if candle_close >= high_4h * (1 + DELTA):
         return 'above'
@@ -68,13 +76,13 @@ while True:
         klines_5m = get_klines(SYMBOL, interval="5m", limit=20)
         klines_1m = get_klines(SYMBOL, interval="1m", limit=20)
 
-        high_4h = float(klines_4h[-2]['high'])
-        low_4h  = float(klines_4h[-2]['low'])
+        high_4h = to_float(klines_4h[-2]['high'])
+        low_4h  = to_float(klines_4h[-2]['low'])
 
         # پیدا کردن هشدار جدید
         if alert_type is None:
             for candle in klines_5m:
-                candle_close = float(candle['close'])
+                candle_close = to_float(candle['close'])
                 alert = check_alert(candle_close, high_4h, low_4h)
                 if alert:
                     alert_type = alert
@@ -87,7 +95,7 @@ while True:
             for candle in klines_5m:
                 if candle['time'] < alert_time:
                     continue
-                candle_close = float(candle['close'])
+                candle_close = to_float(candle['close'])
                 entry = check_entry(candle_close, high_4h, low_4h, alert_type)
                 if entry:
                     active_trade = open_trade(entry, candle_close, candle['time'])
@@ -100,8 +108,8 @@ while True:
                 if candle['time'] < active_trade['start_time']:
                     continue
 
-                price_high = float(candle['high'])
-                price_low  = float(candle['low'])
+                price_high = to_float(candle['high'])
+                price_low  = to_float(candle['low'])
                 trade_closed = False
 
                 if active_trade['direction'] == "LONG":
