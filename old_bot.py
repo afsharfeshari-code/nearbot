@@ -1,10 +1,10 @@
 import requests
-from datetime import datetime
 import time
+from datetime import datetime
 
-# ---------- تنظیمات تلگرام ----------
+# ---------- تنظیمات ربات ----------
 API_TELEGRAM = "8448021675:AAE0Z4jRdHZKLVXxIBEfpCb9lUbkkxmlW-k"
-CHAT_ID = "7107618784"
+CHAT_ID ="7107618784"
 
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{API_TELEGRAM}/sendMessage"
@@ -13,165 +13,38 @@ def send_telegram_message(message):
     except Exception as e:
         print("خطا در ارسال پیام تلگرام:", e)
 
-# پیام وصل شدن ربات
-send_telegram_message("ربات وصل شد ✅")
-
 # ---------- تنظیمات استراتژی ----------
-DELTA = 0.001
-LEVERAGE = 20
+LEVERAGE = 20              # عدد حتما int باشد
+DELTA = 0.001              # عدد حتما float باشد
 TARGET_MOVE = 0.10 / LEVERAGE
 STOP_MOVE   = 0.40 / LEVERAGE
-SYMBOL = "NEARUSDT"
 
-# ---------- تابع کمکی تبدیل به float امن ----------
-def to_float(x):
-    try:
-        return float(x)
-    except (ValueError, TypeError):
-        return 0.0
+# ---------- نمونه حلقه اصلی ----------
+def main():
+    send_telegram_message("ربات وصل شد ✅")
+    
+    active_trade = None
+    alert_type = None
+    alert_time = None
 
-# ---------- گرفتن کندل از API ----------
-def get_klines(symbol, interval="5m", limit=20):
-    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-    data = requests.get(url).json()
-    klines = []
-    for d in data:
-        klines.append({
-            "time": datetime.fromtimestamp(d[0]/1000),
-            "open": to_float(d[1]),
-            "high": to_float(d[2]),
-            "low": to_float(d[3]),
-            "close": to_float(d[4])
-        })
-    return klines
+    while True:
+        try:
+            # اینجا فرضی: گرفتن قیمت از API یا هر منبع دلخواه
+            price = 1.2345  # مثال
+            # اینجا می‌توانی منطق هشدار و ورود/خروج را قرار بدهی
 
-# ---------- توابع هشدار و ورود ----------
-def check_alert(candle_close, high_4h, low_4h):
-    candle_close = to_float(candle_close)
-    high_4h = to_float(high_4h)
-    low_4h = to_float(low_4h)
-    if candle_close >= high_4h * (1 + DELTA):
-        return 'above'
-    elif candle_close <= low_4h * (1 - DELTA):
-        return 'below'
-    return None
+            # تست ساده: اگر قیمت از 1.23 بالاتر رفت هشدار بده
+            if price > 1.23 and alert_type is None:
+                alert_type = "above"
+                alert_time = datetime.now()
+                send_telegram_message(f"هشدار بالا ثبت شد ⚠️ در {alert_time}")
 
-def check_entry(candle_close, high_4h, low_4h, alert_type):
-    candle_close = to_float(candle_close)
-    high_4h = to_float(high_4h)
-    low_4h = to_float(low_4h)
-    if alert_type == 'above' and candle_close <= high_4h * (1 - DELTA):
-        return 'SHORT'
-    elif alert_type == 'below' and candle_close >= low_4h * (1 + DELTA):
-        return 'LONG'
-    return None
+            time.sleep(30)
 
-def open_trade(direction, price, start_time):
-    return {"direction": direction, "entry_price": to_float(price), "start_time": start_time, "status": "open"}
+        except Exception as e:
+            print("خطا:", e)
+            time.sleep(30)
 
-# ---------- حلقه اصلی ----------
-active_trade = None
-alert_type = None
-alert_time = None
-
-while True:
-    try:
-        # گرفتن کندل‌ها
-        klines_4h = get_klines(SYMBOL, interval="4h", limit=2)
-        klines_5m = get_klines(SYMBOL, interval="5m", limit=20)
-        klines_1m = get_klines(SYMBOL, interval="1m", limit=20)
-
-        high_4h = to_float(klines_4h[-2]['high'])
-        low_4h  = to_float(klines_4h[-2]['low'])
-
-        # پیدا کردن هشدار جدید
-        if alert_type is None:
-            for candle in klines_5m:
-                candle_close = to_float(candle['close'])
-                alert = check_alert(candle_close, high_4h, low_4h)
-                if alert:
-                    alert_type = alert
-                    alert_time = candle['time']
-                    send_telegram_message(f"هشدار {alert} روی کندل 5 دقیقه‌ای در {alert_time} ثبت شد ⚠️")
-                    break
-
-        # پیدا کردن کندل ورود
-        if alert_type and active_trade is None:
-            for candle in klines_5m:
-                if candle['time'] < alert_time:
-                    continue
-                candle_close = to_float(candle['close'])
-                entry = check_entry(candle_close, high_4h, low_4h, alert_type)
-                if entry:
-                    active_trade = open_trade(entry, candle_close, candle['time'])
-                    send_telegram_message(
-                        f"معامله جدید {entry} باز شد 🔔\nEntry: {candle_close} Time: {candle['time']}"
-                    )
-                    break
-
-        # بررسی ۱ دقیقه‌ای بعد از ورود
-        if active_trade:
-            for candle in klines_1m:
-                if candle['time'] < active_trade['start_time']:
-                    continue
-
-                price_high = to_float(candle['high'])
-                price_low  = to_float(candle['low'])
-                entry_price = to_float(active_trade['entry_price'])
-                trade_closed = False
-
-                if active_trade['direction'] == "LONG":
-                    if price_high >= entry_price*(1 + TARGET_MOVE):
-                        pnl = LEVERAGE * TARGET_MOVE
-                        active_trade.update({
-                            "exit_price": entry_price*(1 + TARGET_MOVE),
-                            "pnl": pnl,
-                            "status": "closed",
-                            "exit_time": candle['time']
-                        })
-                        trade_closed = True
-                    elif price_low <= entry_price*(1 - STOP_MOVE):
-                        pnl = -LEVERAGE * STOP_MOVE
-                        active_trade.update({
-                            "exit_price": entry_price*(1 - STOP_MOVE),
-                            "pnl": pnl,
-                            "status": "closed",
-                            "exit_time": candle['time']
-                        })
-                        trade_closed = True
-
-                elif active_trade['direction'] == "SHORT":
-                    if price_low <= entry_price*(1 - TARGET_MOVE):
-                        pnl = LEVERAGE * TARGET_MOVE
-                        active_trade.update({
-                            "exit_price": entry_price*(1 - TARGET_MOVE),
-                            "pnl": pnl,
-                            "status": "closed",
-                            "exit_time": candle['time']
-                        })
-                        trade_closed = True
-                    elif price_high >= entry_price*(1 + STOP_MOVE):
-                        pnl = -LEVERAGE * STOP_MOVE
-                        active_trade.update({
-                            "exit_price": entry_price*(1 + STOP_MOVE),
-                            "pnl": pnl,
-                            "status": "closed",
-                            "exit_time": candle['time']
-                        })
-                        trade_closed = True
-
-                if trade_closed:
-                    send_telegram_message(
-                        f"معامله بسته شد ✅\nDirection: {active_trade['direction']}\n"
-                        f"Entry: {entry_price}\nExit: {active_trade['exit_price']}\n"
-                        f"PnL: {active_trade['pnl']}"
-                    )
-                    active_trade = None
-                    alert_type = None
-                    break
-
-        time.sleep(30)
-
-    except Exception as e:
-        print("خطا:", e)
-        time.sleep(30)
+# این خط برای اجرای مستقیم old_bot.py کافی است
+if __name__ == "__main__":
+    main()
