@@ -1,130 +1,73 @@
-import requests
+import pandas as pd
+import ccxt
 import time
-import datetime
-import os
+import requests
 
-# ========================
-# تنظیمات
-# ========================
-
-SYMBOL = "NEARUSDT"
-DELTA = 0.001
+# ----------------- تنظیمات -----------------
+API_TELEGRAM =8448021675:"AAE0Z4jRdHZKLVXxIBEfpCb9lUbkkxmlW-k"
+CHAT_ID = "7107618784"
+SYMBOL = "NEAR/USDT"
 LEVERAGE = 20
 TARGET_MOVE = 0.10 / LEVERAGE
 STOP_MOVE = 0.40 / LEVERAGE
+DELTA = 0.001
+# -----------------------------------------
 
-BOT_TOKEN = os.getenv("8448021675:AAE0Z4jRdHZKLVXxIBEfpCb9lUbkkxmlW-k")
-CHAT_ID = os.getenv("7107618784")
-
-BINANCE_URL = "https://api.binance.com/api/v3/klines"
-
-# ========================
-# توابع کمکی
-# ========================
+exchange = ccxt.binance()
 
 def send_telegram(message):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": message})
+    url = f"https://api.telegram.org/bot{API_TELEGRAM}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": message}
+    requests.post(url, data=payload)
 
-def get_klines(interval, limit=200):
-    params = {
-        "symbol": SYMBOL,
-        "interval": interval,
-        "limit": limit
-    }
-    response = requests.get(BINANCE_URL, params=params)
-    return response.json()
+def get_ohlcv(timeframe):
+    data = exchange.fetch_ohlcv(SYMBOL, timeframe=timeframe, limit=100)
+    df = pd.DataFrame(data, columns=["timestamp","open","high","low","close","volume"])
+    df['time'] = pd.to_datetime(df['timestamp'], unit='ms')
+    return df
 
-def check_alert(close_5m, high_4h, low_4h):
-    if close_5m >= high_4h * (1 + DELTA):
-        return "above"
-    elif close_5m <= low_4h * (1 - DELTA):
-        return "below"
+def check_alert(candle_5m, high_4h, low_4h):
+    if candle_5m['close'] >= high_4h * (1 + DELTA):
+        return 'above'
+    elif candle_5m['close'] <= low_4h * (1 - DELTA):
+        return 'below'
     return None
 
-def check_entry(close_5m, high_4h, low_4h, alert_type):
-    if alert_type == "above" and close_5m <= high_4h * (1 - DELTA):
-        return "SHORT"
-    elif alert_type == "below" and close_5m >= low_4h * (1 + DELTA):
-        return "LONG"
+def check_entry(candle_5m, high_4h, low_4h, alert_type):
+    if alert_type == 'above' and candle_5m['close'] <= high_4h * (1 - DELTA):
+        return 'SHORT'
+    elif alert_type == 'below' and candle_5m['close'] >= low_4h * (1 + DELTA):
+        return 'LONG'
     return None
 
-# ========================
-# منطق اصلی
-# ========================
+def main_loop():
+    while True:
+        df_4h = get_ohlcv("4h")
+        df_5m = get_ohlcv("5m")
+        df_1m = get_ohlcv("1m")
 
-print("Bot Started...")
-
-active_trade = None
-
-while True:
-    try:
-        klines_4h = get_klines("4h", 2)
-        klines_5m = get_klines("5m", 50)
-        klines_1m = get_klines("1m", 100)
-
-        high_4h = float(klines_4h[-2][2])
-        low_4h = float(klines_4h[-2][3])
+        last_4h = df_4h.iloc[-2]
+        next_4h_start = df_4h.iloc[-1]['time']
+        df_5m_slice = df_5m[df_5m['time'] >= next_4h_start].reset_index(drop=True)
 
         alert_type = None
-
-        # بررسی هشدار در 5 دقیقه
-        for k in klines_5m:
-            close_5m = float(k[4])
-            alert = check_alert(close_5m, high_4h, low_4h)
+        for i, row in df_5m_slice.iterrows():
+            alert = check_alert(row, last_4h['high'], last_4h['low'])
             if alert:
                 alert_type = alert
                 break
 
-        # بررسی ورود
-        if alert_type and not active_trade:
-            for k in klines_5m:
-                close_5m = float(k[4])
-                entry = check_entry(close_5m, high_4h, low_4h, alert_type)
-                if entry:
-                    active_trade = {
-                        "direction": entry,
-                        "entry_price": close_5m
-                    }
-
-                    send_telegram(
-                        f"📢 SIGNAL {entry}\n"
-                        f"Symbol: {SYMBOL}\n"
-                        f"Entry: {close_5m}"
-                    )
+        if alert_type:
+            for j in range(i+1, len(df_5m_slice)):
+                entry_signal = check_entry(df_5m_slice.iloc[j], last_4h['high'], last_4h['low'], alert_type)
+                if entry_signal:
+                    msg = f"سیگنال {entry_signal} برای {SYMBOL} پیدا شد! قیمت: {df_5m_slice.iloc[j]['close']}"
+                    print(msg)
+                    send_telegram(msg)
                     break
 
-        # مدیریت معامله با 1 دقیقه
-        if active_trade:
-            for k in klines_1m:
-                high_1m = float(k[2])
-                low_1m = float(k[3])
+        time.sleep(60)  # هر دقیقه یک بار چک شود
 
-                entry_price = active_trade["entry_price"]
-                direction = active_trade["direction"]
-
-                if direction == "LONG":
-                    if high_1m >= entry_price * (1 + TARGET_MOVE):
-                        send_telegram("✅ TARGET HIT")
-                        active_trade = None
-                        break
-                    elif low_1m <= entry_price * (1 - STOP_MOVE):
-                        send_telegram("❌ STOP LOSS HIT")
-                        active_trade = None
-                        break
-
-                if direction == "SHORT":
-                    if low_1m <= entry_price * (1 - TARGET_MOVE):
-                        send_telegram("✅ TARGET HIT")
-                        active_trade = None
-                        break
-                    elif high_1m >= entry_price * (1 + STOP_MOVE):
-                        send_telegram("❌ STOP LOSS HIT")‌
-                        active_trade = None
-                        break
-
-        time.sleep(60)
-
-    except Exception as e:
-        print("Error:", e)
-        time.sleep(30)
+if name == "main":
+    send_telegram("ربات سیگنال NEARUSDT آنلاین شد ✅")
+    main_loop()
