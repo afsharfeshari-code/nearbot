@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 import time
 
 # ---------- تنظیمات تلگرام ----------
-API_TELEGRAM ="8448021675:AAE0Z4jRdHZKLVXxIBEfpCb9lUbkkxmlW-k"
-CHAT_ID ="7107618784"
+API_TELEGRAM = "8448021675:AAE0Z4jRdHZKLVXxIBEfpCb9lUbkkxmlW-k"
+CHAT_ID = "7107618784"
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{API_TELEGRAM}/sendMessage"
     try:
@@ -17,9 +17,9 @@ send_telegram_message("ربات وصل شد ✅")
 
 # ---------- تنظیمات استراتژی ----------
 DELTA = 0.001
-LEVERAGE = 20
+LEVERAGE = 20  # عدد صحیح
 TARGET_MOVE = 0.10 / LEVERAGE
-STOP_MOVE = 0.40 / LEVERAGE
+STOP_MOVE   = 0.40 / LEVERAGE
 
 SYMBOL = "NEARUSDT"
 
@@ -39,17 +39,17 @@ def get_klines(symbol, interval="5m", limit=20):
         })
     return klines
 
-def check_alert(candle, high_4h, low_4h):
-    if candle['close'] >= high_4h * (1 + DELTA):
+def check_alert(candle_close, high_4h, low_4h):
+    if candle_close >= high_4h * (1 + DELTA):
         return 'above'
-    elif candle['close'] <= low_4h * (1 - DELTA):
+    elif candle_close <= low_4h * (1 - DELTA):
         return 'below'
     return None
 
-def check_entry(candle, high_4h, low_4h, alert_type):
-    if alert_type == 'above' and candle['close'] <= high_4h * (1 - DELTA):
+def check_entry(candle_close, high_4h, low_4h, alert_type):
+    if alert_type == 'above' and candle_close <= high_4h * (1 - DELTA):
         return 'SHORT'
-    elif alert_type == 'below' and candle['close'] >= low_4h * (1 + DELTA):
+    elif alert_type == 'below' and candle_close >= low_4h * (1 + DELTA):
         return 'LONG'
     return None
 
@@ -68,13 +68,14 @@ while True:
         klines_5m = get_klines(SYMBOL, interval="5m", limit=20)
         klines_1m = get_klines(SYMBOL, interval="1m", limit=20)
 
-        high_4h = klines_4h[-2]['high']
-        low_4h = klines_4h[-2]['low']
+        high_4h = float(klines_4h[-2]['high'])
+        low_4h  = float(klines_4h[-2]['low'])
 
         # پیدا کردن هشدار جدید
         if alert_type is None:
             for candle in klines_5m:
-                alert = check_alert(candle, high_4h, low_4h)
+                candle_close = float(candle['close'])
+                alert = check_alert(candle_close, high_4h, low_4h)
                 if alert:
                     alert_type = alert
                     alert_time = candle['time']
@@ -86,10 +87,11 @@ while True:
             for candle in klines_5m:
                 if candle['time'] < alert_time:
                     continue
-                entry = check_entry(candle, high_4h, low_4h, alert_type)
+                candle_close = float(candle['close'])
+                entry = check_entry(candle_close, high_4h, low_4h, alert_type)
                 if entry:
-                    active_trade = open_trade(entry, candle['close'], candle['time'])
-                    send_telegram_message(f"معامله جدید {entry} باز شد 🔔\nEntry: {candle['close']} Time: {candle['time']}")
+                    active_trade = open_trade(entry, candle_close, candle['time'])
+                    send_telegram_message(f"معامله جدید {entry} باز شد 🔔\nEntry: {candle_close} Time: {candle['time']}")
                     break
 
         # بررسی ۱ دقیقه‌ای بعد از ورود
@@ -98,41 +100,60 @@ while True:
                 if candle['time'] < active_trade['start_time']:
                     continue
 
-                price_high = candle['high']
-                price_low = candle['low']
+                price_high = float(candle['high'])
+                price_low  = float(candle['low'])
                 trade_closed = False
 
                 if active_trade['direction'] == "LONG":
                     if price_high >= active_trade['entry_price']*(1 + TARGET_MOVE):
                         pnl = LEVERAGE * TARGET_MOVE
-                        active_trade.update({"exit_price": active_trade['entry_price']*(1 + TARGET_MOVE),
-                                             "pnl": pnl, "status": "closed", "exit_time": candle['time']})
+                        active_trade.update({
+                            "exit_price": active_trade['entry_price']*(1 + TARGET_MOVE),
+                            "pnl": pnl,
+                            "status": "closed",
+                            "exit_time": candle['time']
+                        })
                         trade_closed = True
                     elif price_low <= active_trade['entry_price']*(1 - STOP_MOVE):
                         pnl = -LEVERAGE * STOP_MOVE
-                        active_trade.update({"exit_price": active_trade['entry_price']*(1 - STOP_MOVE),
-                                             "pnl": pnl, "status": "closed", "exit_time": candle['time']})
+                        active_trade.update({
+                            "exit_price": active_trade['entry_price']*(1 - STOP_MOVE),
+                            "pnl": pnl,
+                            "status": "closed",
+                            "exit_time": candle['time']
+                        })
                         trade_closed = True
 
                 elif active_trade['direction'] == "SHORT":
                     if price_low <= active_trade['entry_price']*(1 - TARGET_MOVE):
                         pnl = LEVERAGE * TARGET_MOVE
-                        active_trade.update({"exit_price": active_trade['entry_price']*(1 - TARGET_MOVE),
-                                             "pnl": pnl, "status": "closed", "exit_time": candle['time']})
+                        active_trade.update({
+                            "exit_price": active_trade['entry_price']*(1 - TARGET_MOVE),
+                            "pnl": pnl,
+                            "status": "closed",
+                            "exit_time": candle['time']
+                        })
                         trade_closed = True
                     elif price_high >= active_trade['entry_price']*(1 + STOP_MOVE):
                         pnl = -LEVERAGE * STOP_MOVE
-                        active_trade.update({"exit_price": active_trade['entry_price']*(1 + STOP_MOVE),
-                                             "pnl": pnl, "status": "closed", "exit_time": candle['time']})
+                        active_trade.update({
+                            "exit_price": active_trade['entry_price']*(1 + STOP_MOVE),
+                            "pnl": pnl,
+                            "status": "closed",
+                            "exit_time": candle['time']
+                        })
                         trade_closed = True
 
                 if trade_closed:
-                    send_telegram_message(f"معامله بسته شد ✅\nDirection: {active_trade['direction']}\nEntry: {active_trade['entry_price']}\nExit: {active_trade['exit_price']}\nPnL: {active_trade['pnl']}")
+                    send_telegram_message(
+                        f"معامله بسته شد ✅\nDirection: {active_trade['direction']}\n"
+                        f"Entry: {active_trade['entry_price']}\nExit: {active_trade['exit_price']}\n"
+                        f"PnL: {active_trade['pnl']}"
+                    )
                     active_trade = None
                     alert_type = None
                     break
 
-        # هر ۳۰ ثانیه چک می‌کنه
         time.sleep(30)
 
     except Exception as e:
