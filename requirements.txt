@@ -1,2 +1,4 @@
 requests
 tradingview_ta
+Flask
+requests
