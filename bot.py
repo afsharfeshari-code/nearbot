@@ -5,7 +5,7 @@ import requests
 
 # ----------------- تنظیمات -----------------
 API_TELEGRAM ="AAE0Z4jRdHZKLVXxIBEfpCb9lUbkkxmlW-k"
-CHAT_ID = "7107618784"
+CHAT_ID ="7107618784"
 SYMBOL = "NEAR/USDT"
 LEVERAGE = 20
 TARGET_MOVE = 0.10 / LEVERAGE
