@@ -1,41 +1,33 @@
-import time
 import requests
 from datetime import datetime, timedelta
-from binance.client import Client
+import time
 
 # ---------- تنظیمات تلگرام ----------
-API_TELEGRAM = "8448021675:AAE0Z4jRdHZKLVXxIBEfpCb9lUbkkxmlW-k"
-CHAT_ID = "7107618784"
-
+API_TELEGRAM ="8448021675:AAE0Z4jRdHZKLVXxIBEfpCb9lUbkkxmlW-k"
+CHAT_ID ="7107618784"
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{API_TELEGRAM}/sendMessage"
-    data = {"chat_id": CHAT_ID, "text": message}
     try:
-        requests.post(url, data=data)
+        requests.post(url, data={"chat_id": CHAT_ID, "text": message})
     except Exception as e:
         print("خطا در ارسال پیام تلگرام:", e)
 
-# ---------- ارسال پیام تست ----------
+# ---------- پیام تست ----------
 send_telegram_message("ربات وصل شد ✅")
 
 # ---------- تنظیمات استراتژی ----------
 DELTA = 0.001
 LEVERAGE = 20
-TARGET_MOVE = 0.10 / LEVERAGE   # 0.5% حرکت قیمت → 10% PnL
-STOP_MOVE = 0.40 / LEVERAGE     # 2% حرکت قیمت → 40% ضرر با لورج 20
+TARGET_MOVE = 0.10 / LEVERAGE
+STOP_MOVE = 0.40 / LEVERAGE
 
 SYMBOL = "NEARUSDT"
-INTERVAL_1M = "1m"
-INTERVAL_5M = "5m"
-INTERVAL_4H = "4h"
-
-# ---------- کلاینت Binance ----------
-client = Client()  # فقط public data میخوایم، API key نیاز نیست
 
 # ---------- توابع کمکی ----------
-def get_klines(symbol, interval, limit=100):
-    """ دریافت کندل‌های اخیر """
-    data = client.get_klines(symbol=symbol, interval=interval, limit=limit)
+def get_klines(symbol, interval="5m", limit=20):
+    """ دریافت آخرین کندل‌ها از Binance API عمومی """
+    url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
+    data = requests.get(url).json()
     klines = []
     for d in data:
         klines.append({
@@ -47,17 +39,17 @@ def get_klines(symbol, interval, limit=100):
         })
     return klines
 
-def check_alert(candle_5m, high_4h, low_4h):
-    if candle_5m['close'] >= high_4h * (1 + DELTA):
+def check_alert(candle, high_4h, low_4h):
+    if candle['close'] >= high_4h * (1 + DELTA):
         return 'above'
-    elif candle_5m['close'] <= low_4h * (1 - DELTA):
+    elif candle['close'] <= low_4h * (1 - DELTA):
         return 'below'
     return None
 
-def check_entry(candle_5m, high_4h, low_4h, alert_type):
-    if alert_type == 'above' and candle_5m['close'] <= high_4h * (1 - DELTA):
+def check_entry(candle, high_4h, low_4h, alert_type):
+    if alert_type == 'above' and candle['close'] <= high_4h * (1 - DELTA):
         return 'SHORT'
-    elif alert_type == 'below' and candle_5m['close'] >= low_4h * (1 + DELTA):
+    elif alert_type == 'below' and candle['close'] >= low_4h * (1 + DELTA):
         return 'LONG'
     return None
 
@@ -71,10 +63,10 @@ alert_time = None
 
 while True:
     try:
-        # گرفتن آخرین کندل‌ها
-        klines_4h = get_klines(SYMBOL, INTERVAL_4H, limit=2)
-        klines_5m = get_klines(SYMBOL, INTERVAL_5M, limit=20)
-        klines_1m = get_klines(SYMBOL, INTERVAL_1M, limit=20)
+        # گرفتن کندل‌ها
+        klines_4h = get_klines(SYMBOL, interval="4h", limit=2)
+        klines_5m = get_klines(SYMBOL, interval="5m", limit=20)
+        klines_1m = get_klines(SYMBOL, interval="1m", limit=20)
 
         high_4h = klines_4h[-2]['high']
         low_4h = klines_4h[-2]['low']
