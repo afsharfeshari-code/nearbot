@@ -4,8 +4,8 @@ from datetime import datetime
 import os
 
 # ---------- تنظیمات ربات ----------
-API_TELEGRAM = os.getenv("8448021675:AAE0Z4jRdHZKLVXxIBEfpCb9lUbkkxmlW-k")
-CHAT_ID      = os.getenv("7107618784")
+API_TELEGRAM="8448021675:AAE0Z4jRdHZKLVXxIBEfpCb9lUbkkxmlW-k"
+CHAT_ID="7107618784"
 
 def send_telegram_message(message):
     try:
