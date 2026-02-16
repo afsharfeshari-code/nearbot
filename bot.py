@@ -18,17 +18,17 @@ send_telegram_message("ربات وصل شد ✅")
 
 # ---------- تنظیمات استراتژی ----------
 DELTA = 0.001
-LEVERAGE = 20         # عدد صحیح
+LEVERAGE = 20
 TARGET_MOVE = 0.10 / LEVERAGE
 STOP_MOVE   = 0.40 / LEVERAGE
 SYMBOL = "NEARUSDT"
 
-# ---------- تابع کمکی تبدیل به float ----------
+# ---------- تابع کمکی تبدیل به float امن ----------
 def to_float(x):
     try:
         return float(x)
-    except:
-        return 0.0  # یا مقدار پیش‌فرض دیگر
+    except (ValueError, TypeError):
+        return 0.0
 
 # ---------- گرفتن کندل از API ----------
 def get_klines(symbol, interval="5m", limit=20):
@@ -47,6 +47,9 @@ def get_klines(symbol, interval="5m", limit=20):
 
 # ---------- توابع هشدار و ورود ----------
 def check_alert(candle_close, high_4h, low_4h):
+    candle_close = to_float(candle_close)
+    high_4h = to_float(high_4h)
+    low_4h = to_float(low_4h)
     if candle_close >= high_4h * (1 + DELTA):
         return 'above'
     elif candle_close <= low_4h * (1 - DELTA):
@@ -54,6 +57,9 @@ def check_alert(candle_close, high_4h, low_4h):
     return None
 
 def check_entry(candle_close, high_4h, low_4h, alert_type):
+    candle_close = to_float(candle_close)
+    high_4h = to_float(high_4h)
+    low_4h = to_float(low_4h)
     if alert_type == 'above' and candle_close <= high_4h * (1 - DELTA):
         return 'SHORT'
     elif alert_type == 'below' and candle_close >= low_4h * (1 + DELTA):
@@ -61,7 +67,7 @@ def check_entry(candle_close, high_4h, low_4h, alert_type):
     return None
 
 def open_trade(direction, price, start_time):
-    return {"direction": direction, "entry_price": price, "start_time": start_time, "status": "open"}
+    return {"direction": direction, "entry_price": to_float(price), "start_time": start_time, "status": "open"}
 
 # ---------- حلقه اصلی ----------
 active_trade = None
@@ -98,7 +104,9 @@ while True:
                 entry = check_entry(candle_close, high_4h, low_4h, alert_type)
                 if entry:
                     active_trade = open_trade(entry, candle_close, candle['time'])
-                    send_telegram_message(f"معامله جدید {entry} باز شد 🔔\nEntry: {candle_close} Time: {candle['time']}")
+                    send_telegram_message(
+                        f"معامله جدید {entry} باز شد 🔔\nEntry: {candle_close} Time: {candle['time']}"
+                    )
                     break
 
         # بررسی ۱ دقیقه‌ای بعد از ورود
@@ -109,22 +117,23 @@ while True:
 
                 price_high = to_float(candle['high'])
                 price_low  = to_float(candle['low'])
+                entry_price = to_float(active_trade['entry_price'])
                 trade_closed = False
 
                 if active_trade['direction'] == "LONG":
-                    if price_high >= active_trade['entry_price']*(1 + TARGET_MOVE):
+                    if price_high >= entry_price*(1 + TARGET_MOVE):
                         pnl = LEVERAGE * TARGET_MOVE
                         active_trade.update({
-                            "exit_price": active_trade['entry_price']*(1 + TARGET_MOVE),
+                            "exit_price": entry_price*(1 + TARGET_MOVE),
                             "pnl": pnl,
                             "status": "closed",
                             "exit_time": candle['time']
                         })
                         trade_closed = True
-                    elif price_low <= active_trade['entry_price']*(1 - STOP_MOVE):
+                    elif price_low <= entry_price*(1 - STOP_MOVE):
                         pnl = -LEVERAGE * STOP_MOVE
                         active_trade.update({
-                            "exit_price": active_trade['entry_price']*(1 - STOP_MOVE),
+                            "exit_price": entry_price*(1 - STOP_MOVE),
                             "pnl": pnl,
                             "status": "closed",
                             "exit_time": candle['time']
@@ -132,19 +141,19 @@ while True:
                         trade_closed = True
 
                 elif active_trade['direction'] == "SHORT":
-                    if price_low <= active_trade['entry_price']*(1 - TARGET_MOVE):
+                    if price_low <= entry_price*(1 - TARGET_MOVE):
                         pnl = LEVERAGE * TARGET_MOVE
                         active_trade.update({
-                            "exit_price": active_trade['entry_price']*(1 - TARGET_MOVE),
+                            "exit_price": entry_price*(1 - TARGET_MOVE),
                             "pnl": pnl,
                             "status": "closed",
                             "exit_time": candle['time']
                         })
                         trade_closed = True
-                    elif price_high >= active_trade['entry_price']*(1 + STOP_MOVE):
+                    elif price_high >= entry_price*(1 + STOP_MOVE):
                         pnl = -LEVERAGE * STOP_MOVE
                         active_trade.update({
-                            "exit_price": active_trade['entry_price']*(1 + STOP_MOVE),
+                            "exit_price": entry_price*(1 + STOP_MOVE),
                             "pnl": pnl,
                             "status": "closed",
                             "exit_time": candle['time']
@@ -154,7 +163,7 @@ while True:
                 if trade_closed:
                     send_telegram_message(
                         f"معامله بسته شد ✅\nDirection: {active_trade['direction']}\n"
-                        f"Entry: {active_trade['entry_price']}\nExit: {active_trade['exit_price']}\n"
+                        f"Entry: {entry_price}\nExit: {active_trade['exit_price']}\n"
                         f"PnL: {active_trade['pnl']}"
                     )
                     active_trade = None
