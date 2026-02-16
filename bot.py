@@ -4,7 +4,7 @@ import time
 import requests
 
 # ----------------- تنظیمات -----------------
-API_TELEGRAM =8448021675:"AAE0Z4jRdHZKLVXxIBEfpCb9lUbkkxmlW-k"
+API_TELEGRAM ="AAE0Z4jRdHZKLVXxIBEfpCb9lUbkkxmlW-k"
 CHAT_ID = "7107618784"
 SYMBOL = "NEAR/USDT"
 LEVERAGE = 20
