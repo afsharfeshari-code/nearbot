@@ -10,8 +10,8 @@ def home():
 
 # ---------- اجرای ربات در پس‌زمینه ----------
 def run_bot():
-    import old_bot  # اسم فایل رباتت بدون .py
-    # اگر old_bot.py تابع main دارد، این خط را فعال کن:
+    import old_bot  # نام فایل رباتت بدون .py
+    # اگر old_bot تابع main دارد، فعال کن:
     # old_bot.main()
 
 if __name__ == "__main__":
